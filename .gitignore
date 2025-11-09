@@ -3,6 +3,36 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Environment
+.env
+venv/
+env/
+ENV/
+
+# Database
+data/
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Docker
+docker-compose.override.yml
+
 # C extensions
 *.so
 

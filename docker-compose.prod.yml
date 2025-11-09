@@ -1,0 +1,64 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: web.Dockerfile
+    container_name: nalabo-web
+    restart: unless-stopped
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - DATABASE_URL=sqlite:///data/flowcase.db
+      - DOCKER_SOCKET=/var/run/docker.sock
+      - DROPLET_VOLUME_PATH=/flowcase/volumes
+    volumes:
+      - flowcase-data:/flowcase/data
+      - flowcase-volumes:/flowcase/volumes
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - nalabo_network
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    image: nginx:alpine
+    container_name: nalabo-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - flowcase-nginx-data:/var/log/nginx
+      - ./ssl:/etc/nginx/ssl:ro  # For SSL certificates
+    networks:
+      - nalabo_network
+    depends_on:
+      - web
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  nalabo_network:
+    driver: bridge
+    name: nalabo_network
+
+volumes:
+  flowcase-data:
+    name: nalabo_data
+    driver: local
+  flowcase-volumes:
+    name: nalabo_volumes
+    driver: local
+  flowcase-nginx-data:
+    name: nalabo_nginx
+    driver: local

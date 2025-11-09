@@ -1,0 +1,35 @@
+/* Admin UI enhancements */
+.admin-modal {
+    background: #f9f9f9;
+    border-radius: 8px;
+    padding: 20px;
+}
+.admin-modal-header {
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+}
+.admin-modal-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.admin-modal-table th,
+.admin-modal-table td {
+    padding: 8px;
+    border: 1px solid #ddd;
+}
+.admin-modal-table th {
+    background: #f0f0f0;
+}
+.button-1,
+.button-1-full {
+    background: #007bff;
+    color: #fff;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.button-1:hover,
+.button-1-full:hover {
+    background: #0056b3;
+}

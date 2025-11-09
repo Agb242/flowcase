@@ -6,7 +6,9 @@ from utils.permissions import Permissions
 
 class User(UserMixin, db.Model):
 	id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	tenant_id = db.Column(db.String(36), db.ForeignKey('tenant.id'), nullable=True)
 	username = db.Column(db.String(80), unique=True, nullable=False)
+	email = db.Column(db.String(120), unique=True, nullable=True)
 	password = db.Column(db.String(80), nullable=False)
 	auth_token = db.Column(db.String(80), nullable=False)
 	created_at = db.Column(db.DateTime, server_default=func.now())
@@ -33,4 +35,11 @@ class Group(db.Model):
 	perm_view_registry = db.Column(db.Boolean, nullable=False)
 	perm_edit_registry = db.Column(db.Boolean, nullable=False)
 	perm_view_groups = db.Column(db.Boolean, nullable=False)
-	perm_edit_groups = db.Column(db.Boolean, nullable=False) 
+	perm_edit_groups = db.Column(db.Boolean, nullable=False)
+	
+	# Workshop permissions
+	perm_view_workshops = db.Column(db.Boolean, nullable=False, default=False)
+	perm_edit_workshops = db.Column(db.Boolean, nullable=False, default=False)
+	perm_create_workshops = db.Column(db.Boolean, nullable=False, default=False)
+	perm_manage_templates = db.Column(db.Boolean, nullable=False, default=False)
+	perm_view_workshop_instances = db.Column(db.Boolean, nullable=False, default=False)

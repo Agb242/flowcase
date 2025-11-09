@@ -1,0 +1,51 @@
+╔══════════════════════════════════════════════════════════════╗
+║          IDENTIFIANTS DE CONNEXION NALABO/FLOWCASE           ║
+╚══════════════════════════════════════════════════════════════╝
+
+🔐 COMPTE ADMINISTRATEUR
+-----------------------
+Username: admin
+Password: s12zRTEAV9p6KVXr
+Permissions: TOUTES (Admin Panel, Droplets, Instances, Users, etc.)
+
+👤 COMPTE UTILISATEUR
+-----------------------
+Username: user
+Password: gcbhQDv9fd02ZgH8
+Permissions: Limitées (Browse Droplets, Ses propres instances)
+
+🌐 URL D'ACCÈS
+-----------------------
+Local: http://localhost:5000
+Réseau: http://192.168.100.15:5000
+
+📍 PAGES PRINCIPALES
+-----------------------
+Login:      http://localhost:5000/
+Dashboard:  http://localhost:5000/dashboard
+Droplets:   http://localhost:5000/droplets_page
+Instances:  http://localhost:5000/instances
+Workshops:  http://localhost:5000/workshops_page
+
+⚠️  IMPORTANT
+-----------------------
+- Ces identifiants sont générés au PREMIER démarrage uniquement
+- Si vous supprimez data/flowcase.db, de nouveaux identifiants seront créés
+- Changez le mot de passe admin après la première connexion
+- Le compte "user" est pour tester les permissions limitées
+
+🔄 REGÉNÉRER LES IDENTIFIANTS
+-----------------------
+1. Arrêter le serveur (Ctrl+C)
+2. Supprimer la base: rm -rf data/.firstrun data/flowcase.db
+3. Redémarrer: python3 start_dev.py
+4. Nouveaux identifiants affichés dans la console
+
+📝 NOTES
+-----------------------
+- Les mots de passe sont aléatoires (16 caractères)
+- Format: lettres (a-z, A-Z) + chiffres (0-9)
+- Stockés hashés dans la base de données (sécurisé)
+- Session "Remember me" : 30 jours
+
+Date de génération: 2025-11-08 19:06:13

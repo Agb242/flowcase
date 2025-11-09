@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/favicon.ico">
-    <title>Nalabo - Sign in</title>
+    <title>Nalabo - Create account</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -17,7 +17,7 @@
             min-height: 100vh;
             padding: 1rem;
         }
-        .login-container {
+        .register-container {
             width: 100%;
             max-width: 340px;
         }
@@ -58,6 +58,7 @@
             color: #c9d1d9;
         }
         input[type="text"],
+        input[type="email"],
         input[type="password"] {
             width: 100%;
             padding: 0.5rem 0.75rem;
@@ -69,23 +70,11 @@
             transition: all 0.2s;
         }
         input[type="text"]:focus,
+        input[type="email"]:focus,
         input[type="password"]:focus {
             outline: none;
             border-color: #58a6ff;
             box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
-        }
-        .remember-group {
-            display: flex;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-        input[type="checkbox"] {
-            margin-right: 0.5rem;
-        }
-        .remember-group label {
-            margin: 0;
-            font-weight: 400;
-            font-size: 0.875rem;
         }
         .btn-primary {
             width: 100%;
@@ -98,6 +87,7 @@
             border-radius: 6px;
             cursor: pointer;
             transition: all 0.2s;
+            margin-top: 0.5rem;
         }
         .btn-primary:hover {
             background: #2ea043;
@@ -107,7 +97,7 @@
             box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.15);
         }
         .error-message {
-            margin-top: 1rem;
+            margin-bottom: 1rem;
             padding: 0.75rem;
             background: rgba(248, 81, 73, 0.1);
             border: 1px solid rgba(248, 81, 73, 0.4);
@@ -115,16 +105,7 @@
             color: #f85149;
             font-size: 0.875rem;
         }
-        .success-message {
-            margin-top: 1rem;
-            padding: 0.75rem;
-            background: rgba(46, 160, 67, 0.1);
-            border: 1px solid rgba(46, 160, 67, 0.4);
-            border-radius: 6px;
-            color: #3fb950;
-            font-size: 0.875rem;
-        }
-        .register-box {
+        .login-box {
             margin-top: 1rem;
             padding: 1rem;
             background: #161b22;
@@ -133,29 +114,28 @@
             text-align: center;
             font-size: 0.875rem;
         }
-        .register-box a {
+        .login-box a {
             color: #58a6ff;
             text-decoration: none;
         }
-        .register-box a:hover {
+        .login-box a:hover {
             text-decoration: underline;
+        }
+        .hint {
+            font-size: 0.75rem;
+            color: #8b949e;
+            margin-top: 0.25rem;
         }
     </style>
 </head>
 <body>
-    <div class="login-container">
+    <div class="register-container">
         <div class="logo">
             <div class="logo-text">Nalabo</div>
         </div>
         
         <div class="form-box">
-            <h1 class="form-title">Sign in to Nalabo</h1>
-            
-            {% if success %}
-            <div class="success-message">
-                {{ success }}
-            </div>
-            {% endif %}
+            <h1 class="form-title">Create your account</h1>
             
             {% if error %}
             <div class="error-message">
@@ -163,29 +143,36 @@
             </div>
             {% endif %}
             
-            <form action="{{ url_for('auth.login') }}" method="POST">
+            <form action="{{ url_for('auth.register') }}" method="POST">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                 <div class="form-group">
                     <label for="username">Username</label>
                     <input type="text" name="username" id="username" required autofocus>
+                    <div class="hint">Choose a unique username</div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">Email address</label>
+                    <input type="email" name="email" id="email" required>
                 </div>
                 
                 <div class="form-group">
                     <label for="password">Password</label>
                     <input type="password" name="password" id="password" required>
+                    <div class="hint">At least 8 characters</div>
                 </div>
                 
-                <div class="remember-group">
-                    <input type="checkbox" name="remember" id="remember">
-                    <label for="remember">Remember me</label>
+                <div class="form-group">
+                    <label for="password_confirm">Confirm password</label>
+                    <input type="password" name="password_confirm" id="password_confirm" required>
                 </div>
                 
-                <button type="submit" class="btn-primary">Sign in</button>
+                <button type="submit" class="btn-primary">Create account</button>
             </form>
         </div>
         
-        <div class="register-box">
-            New to Nalabo? <a href="/register">Create an account</a>
+        <div class="login-box">
+            Already have an account? <a href="/">Sign in</a>
         </div>
     </div>
 </body>

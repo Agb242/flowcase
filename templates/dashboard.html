@@ -4,7 +4,7 @@
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link rel="icon" href="/favicon.ico">
-        <title>Flowcase - Dashboard</title>
+        <title>Nalabo - Dashboard</title>
 
         <link rel="stylesheet" href="/static/css/base.css">
         <link rel="stylesheet" href="/static/css/dashboard.css">
@@ -33,6 +33,11 @@
                     "perm_edit_registry": {{ 'true' if current_user.has_permission("perm_edit_registry") else 'false' }},
                     "perm_view_groups": {{ 'true' if current_user.has_permission("perm_view_groups") else 'false' }},
                     "perm_edit_groups": {{ 'true' if current_user.has_permission("perm_edit_groups") else 'false' }},
+                    "perm_view_workshops": {{ 'true' if current_user.has_permission("perm_view_workshops") else 'false' }},
+                    "perm_edit_workshops": {{ 'true' if current_user.has_permission("perm_edit_workshops") else 'false' }},
+                    "perm_create_workshops": {{ 'true' if current_user.has_permission("perm_create_workshops") else 'false' }},
+                    "perm_manage_templates": {{ 'true' if current_user.has_permission("perm_manage_templates") else 'false' }},
+                    "perm_view_workshop_instances": {{ 'true' if current_user.has_permission("perm_view_workshop_instances") else 'false' }}
                 }
             };
         </script>
@@ -41,7 +46,7 @@
     <body>
         <div class="container">
             <nav class="nav">
-                <h1>Flowcase</h1>
+                <h1>Nalabo</h1>
                 
                 <div class="nav-links">
                     {% if current_user.has_permission("perm_admin_panel") %}
@@ -55,6 +60,29 @@
             </nav>
             <div class="content">
                 <div class="main">
+                </div>
+            </div>
+        </div>
+
+        <div class="workshop-section">
+            <div class="workshop-header">
+                <h2>Mes Workshops</h2>
+                {% if current_user.has_permission("perm_create_workshops") %}
+                <button class="button-1" onclick="OpenWorkshopCreationModal()">
+                    <i class="fas fa-plus"></i> Créer un Workshop
+                </button>
+                {% endif %}
+            </div>
+            <div class="workshop-templates">
+                <h3>Templates Disponibles</h3>
+                <div class="workshop-templates-grid" id="workshop-templates-grid">
+                    <!-- Templates will be loaded here -->
+                </div>
+            </div>
+            <div class="user-workshops" id="user-workshops-section">
+                <h3>Mes Instances</h3>
+                <div class="user-workshops-grid" id="user-workshops-grid">
+                    <!-- User workshops will be loaded here -->
                 </div>
             </div>
         </div>
@@ -115,6 +143,14 @@
                     {% if current_user.has_permission("perm_view_instances") %}
                     <a href="#" class="admin-modal-sidebar-button" onclick="AdminChangeTab('instances', this)">
                         <i class="fas fa-desktop"></i>Instances
+                    </a>
+                    {% endif %}
+                    {% if current_user.has_permission("perm_view_workshops") %}
+                    <a href="#" class="admin-modal-sidebar-button" onclick="AdminChangeTab('workshop-templates', this)">
+                        <i class="fas fa-clipboard-list"></i>Workshop Templates
+                    </a>
+                    <a href="#" class="admin-modal-sidebar-button" onclick="AdminChangeTab('workshops', this)">
+                        <i class="fas fa-tools"></i>Workshops
                     </a>
                     {% endif %}
                     <a href="#" class="admin-modal-sidebar-button" onclick="AdminChangeTab('logs', this)">
@@ -456,6 +492,675 @@
             setTimeout(() => {
                 notification.remove();
             }, 5000);
+        }
+    </script>
+    <script>
+        // Workshop Management Functions
+        
+        function GetWorkshopTemplates() {
+            if (!userInfo.permissions.perm_view_workshops) {
+                return;
+            }
+            
+            var url = "/api/workshops/templates";
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    var json = JSON.parse(xhr.responseText);
+                    if (json["success"] == true) {
+                        UpdateWorkshopTemplates(json);
+                    }
+                    else {
+                        if (json["error"] != null) {
+                            CreateNotification(json["error"], "error");
+                        }
+                    }
+                }
+            };
+            xhr.send();
+            
+            console.log("Retrieving workshop templates...");
+        }
+        
+        function UpdateWorkshopTemplates(json) {
+            var templatesGrid = document.getElementById('workshop-templates-grid');
+            if (!templatesGrid) return;
+            
+            templatesGrid.innerHTML = "";
+            
+            if (json["templates"].length == 0) {
+                templatesGrid.innerHTML = '<p class="no-workshops">Aucun template disponible.</p>';
+                return;
+            }
+            
+            json["templates"].forEach(template => {
+                templatesGrid.innerHTML += `
+                <div class="workshop-template" onclick="SelectWorkshopTemplate('${template.id}', '${template.name}')">
+                    <img class="workshop-template-image" src="${template.thumbnail ? template.thumbnail : '/static/img/droplet_default.jpg'}" alt="${template.name}">
+                    <div class="workshop-template-content">
+                        <h4 class="workshop-template-title">${template.name}</h4>
+                        <p class="workshop-template-description">${template.description || ''}</p>
+                        <div class="workshop-template-meta">
+                            <span class="workshop-category">${template.category}</span>
+                            <span class="workshop-duration">${template.estimated_duration || 'N/A'} min</span>
+                        </div>
+                    </div>
+                </div>
+                `;
+            });
+        }
+        
+        function GetUserWorkshops() {
+            if (!userInfo.permissions.perm_view_workshop_instances) {
+                return;
+            }
+            
+            var url = "/api/user-workshops";
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    var json = JSON.parse(xhr.responseText);
+                    if (json["success"] == true) {
+                        UpdateUserWorkshops(json);
+                    }
+                }
+            };
+            xhr.send();
+            
+            console.log("Retrieving user workshops...");
+        }
+        
+        function UpdateUserWorkshops(json) {
+            var workshopsGrid = document.getElementById('user-workshops-grid');
+            if (!workshopsGrid) return;
+            
+            workshopsGrid.innerHTML = "";
+            
+            if (json["user_workshops"].length == 0) {
+                workshopsGrid.innerHTML = '<p class="no-workshops">Aucun workshop en cours.</p>';
+                return;
+            }
+            
+            json["user_workshops"].forEach(userWorkshop => {
+                var statusClass = `status-${userWorkshop.status}`;
+                var statusText = {
+                    'creating': 'Création...',
+                    'ready': 'Prêt',
+                    'running': 'En cours',
+                    'stopped': 'Arrêté',
+                    'error': 'Erreur'
+                }[userWorkshop.status] || userWorkshop.status;
+                
+                workshopsGrid.innerHTML += `
+                <div class="user-workshop" data-id="${userWorkshop.id}">
+                    <div class="user-workshop-header">
+                        <h4 class="user-workshop-title">${userWorkshop.workshop_name || 'Workshop'}</h4>
+                        <span class="workshop-status ${statusClass}">${statusText}</span>
+                    </div>
+                    <div class="user-workshop-actions">
+                        ${userWorkshop.status === 'stopped' ? 
+                            `<button class="button-1-small" onclick="StartUserWorkshop('${userWorkshop.id}')">Démarrer</button>` :
+                            `<button class="button-1-small" onclick="StopUserWorkshop('${userWorkshop.id}')">Arrêter</button>`
+                        }
+                        <button class="button-1-small" onclick="DeleteUserWorkshop('${userWorkshop.id}')">Supprimer</button>
+                    </div>
+                </div>
+                `;
+            });
+        }
+        
+        function OpenWorkshopCreationModal() {
+            if (!userInfo.permissions.perm_create_workshops) {
+                CreateNotification("Vous n'avez pas la permission de créer des workshops.", "error");
+                return;
+            }
+            
+            var modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <h2>Créer un Workshop</h2>
+                    <div class="workshop-creation-form">
+                        <div class="form-group">
+                            <label for="workshop-name">Nom du workshop</label>
+                            <input type="text" id="workshop-name" placeholder="Mon Workshop" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="workshop-description">Description</label>
+                            <textarea id="workshop-description" placeholder="Description du workshop"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="workshop-template">Template</label>
+                            <select id="workshop-template">
+                                <option value="">Sélectionner un template</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-buttons">
+                        <button class="button-1-full" onclick="CreateWorkshop()">Créer</button>
+                        <button class="button-1" onclick="CloseWorkshopModal()">Annuler</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Load templates into dropdown
+            LoadTemplatesForDropdown();
+        }
+        
+        function LoadTemplatesForDropdown() {
+            var url = "/api/workshops/templates";
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    var json = JSON.parse(xhr.responseText);
+                    if (json["success"] == true) {
+                        var select = document.getElementById('workshop-template');
+                        json["templates"].forEach(template => {
+                            var option = document.createElement('option');
+                            option.value = template.id;
+                            option.textContent = template.name;
+                            select.appendChild(option);
+                        });
+                    }
+                }
+            };
+            xhr.send();
+        }
+        
+        function CloseWorkshopModal() {
+            var modal = document.querySelector('.modal.active');
+            if (modal) {
+                modal.remove();
+            }
+        }
+        
+        function CreateWorkshop() {
+            var name = document.getElementById('workshop-name').value;
+            var description = document.getElementById('workshop-description').value;
+            var templateId = document.getElementById('workshop-template').value;
+            
+            if (!name) {
+                CreateNotification("Le nom du workshop est requis.", "error");
+                return;
+            }
+            
+            var url = "/api/workshops";
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", url, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    var json = JSON.parse(xhr.responseText);
+                    if (json["success"] == true) {
+                        CloseWorkshopModal();
+                        CreateNotification("Workshop créé avec succès!", "success");
+                        GetUserWorkshops();
+                    } else {
+                        if (json["error"] != null) {
+                            CreateNotification(json["error"], "error");
+                        } else {
+                            CreateNotification("Une erreur s'est produite lors de la création du workshop.", "error");
+                        }
+                    }
+                }
+            };
+            
+            var data = {
+                name: name,
+                description: description,
+                template_id: templateId || null
+            };
+            
+            xhr.send(JSON.stringify(data));
+        }
+        
+        function SelectWorkshopTemplate(templateId, templateName) {
+            document.getElementById('workshop-template').value = templateId;
+            document.getElementById('workshop-name').value = `Workshop ${templateName}`;
+            CreateNotification(`Template "${templateName}" sélectionné.`, "info");
+        }
+        
+        function StartUserWorkshop(userWorkshopId) {
+            var url = `/api/user-workshops/${userWorkshopId}/start`;
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", url, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    var json = JSON.parse(xhr.responseText);
+                    if (json["success"] == true) {
+                        CreateNotification("Workshop démarré avec succès!", "success");
+                        GetUserWorkshops();
+                    } else {
+                        if (json["error"] != null) {
+                            CreateNotification(json["error"], "error");
+                        } else {
+                            CreateNotification("Une erreur s'est produite lors du démarrage du workshop.", "error");
+                        }
+                    }
+                }
+            };
+            xhr.send();
+        }
+        
+        function StopUserWorkshop(userWorkshopId) {
+            var url = `/api/user-workshops/${userWorkshopId}/stop`;
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", url, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    var json = JSON.parse(xhr.responseText);
+                    if (json["success"] == true) {
+                        CreateNotification("Workshop arrêté avec succès!", "success");
+                        GetUserWorkshops();
+                    } else {
+                        if (json["error"] != null) {
+                            CreateNotification(json["error"], "error");
+                        } else {
+                            CreateNotification("Une erreur s'est produite lors de l'arrêt du workshop.", "error");
+                        }
+                    }
+                }
+            };
+            xhr.send();
+        }
+        
+        function DeleteUserWorkshop(userWorkshopId) {
+            if (!confirm("Êtes-vous sûr de vouloir supprimer ce workshop ?")) {
+                return;
+            }
+            
+            var url = `/api/user-workshops/${userWorkshopId}`;
+            var xhr = new XMLHttpRequest();
+            xhr.open("DELETE", url, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    var json = JSON.parse(xhr.responseText);
+                    if (json["success"] == true) {
+                        CreateNotification("Workshop supprimé avec succès!", "success");
+                        GetUserWorkshops();
+                    } else {
+                        if (json["error"] != null) {
+                            CreateNotification(json["error"], "error");
+                        } else {
+                            CreateNotification("Une erreur s'est produite lors de la suppression du workshop.", "error");
+                        }
+                    }
+                }
+            };
+            xhr.send();
+        }
+        
+        // Load workshops data
+        function LoadWorkshops() {
+            if (userInfo.permissions.perm_view_workshops) {
+                GetWorkshopTemplates();
+            }
+            if (userInfo.permissions.perm_view_workshop_instances) {
+                GetUserWorkshops();
+            }
+        }
+        
+        // Modify UpdateAll to include workshops
+        function UpdateAll() {
+            console.log("Updating all... Time: " + new Date().toLocaleTimeString());
+            GetDroplets();
+            GetInstances();
+            LoadWorkshops();
+        }
+        
+        // Admin Functions for Workshop Management
+        function AdminChangeTabWorkshops(tab, element) {
+            // Remove active class from all links
+            document.querySelectorAll('.admin-modal-sidebar-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Add active class to clicked element
+            element.classList.add('active');
+            
+            var header = document.getElementById('admin-modal-header');
+            var subtext = document.getElementById('admin-modal-subtext');
+            var content = document.querySelector('.admin-modal-main-content');
+            
+            if (tab === 'workshop-templates') {
+                header.innerText = 'Gestion des Templates de Workshops';
+                subtext.innerText = 'Créez et gérez les modèles de workshops pour vos utilisateurs.';
+                LoadWorkshopTemplatesAdmin();
+            } else if (tab === 'workshops') {
+                header.innerText = 'Gestion des Workshops';
+                subtext.innerText = 'Surveillez et gérez tous les workshops actifs.';
+                LoadWorkshopsAdmin();
+            }
+        }
+        
+        function LoadWorkshopTemplatesAdmin() {
+            var content = document.querySelector('.admin-modal-main-content');
+            content.innerHTML = `
+                <div class="admin-modal-card">
+                    <div class="admin-modal-card-header">
+                        <h3>Templates de Workshops</h3>
+                        <button class="button-1" onclick="CreateWorkshopTemplateModal()">
+                            <i class="fas fa-plus"></i> Nouveau Template
+                        </button>
+                    </div>
+                    <table class="admin-modal-table">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Catégorie</th>
+                                <th>Description</th>
+                                <th>Durée Estimée</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workshop-templates-table">
+                            <!-- Templates will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            // Load templates
+            var url = "/api/workshops/templates";
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    var json = JSON.parse(xhr.responseText);
+                    if (json["success"] == true) {
+                        UpdateWorkshopTemplatesTable(json["templates"]);
+                    }
+                }
+            };
+            xhr.send();
+        }
+        
+        function UpdateWorkshopTemplatesTable(templates) {
+            var tbody = document.getElementById('workshop-templates-table');
+            if (!tbody) return;
+            
+            tbody.innerHTML = "";
+            
+            if (templates.length == 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">Aucun template trouvé.</td></tr>';
+                return;
+            }
+            
+            templates.forEach(template => {
+                var row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${template.name}</td>
+                    <td><span class="workshop-category">${template.category}</span></td>
+                    <td>${template.description || 'Aucune description'}</td>
+                    <td>${template.estimated_duration ? template.estimated_duration + ' min' : 'N/A'}</td>
+                    <td>
+                        <div class="admin-modal-table-actions">
+                            <i class="fas fa-edit" onclick="EditWorkshopTemplate('${template.id}')" title="Éditer"></i>
+                            <i class="fas fa-trash" onclick="DeleteWorkshopTemplate('${template.id}')" title="Supprimer"></i>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+        
+        function CreateWorkshopTemplateModal() {
+            var modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 600px;">
+                    <h2>Créer un Template de Workshop</h2>
+                    <div class="workshop-creation-form">
+                        <div class="form-group">
+                            <label for="template-name">Nom du template <span class="required">*</span></label>
+                            <input type="text" id="template-name" placeholder="Nom du template" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="template-category">Catégorie <span class="required">*</span></label>
+                            <select id="template-category" required>
+                                <option value="">Sélectionner une catégorie</option>
+                                <option value="DevOps">DevOps</option>
+                                <option value="Sécurité">Sécurité</option>
+                                <option value="Cloud">Cloud</option>
+                                <option value="Développement">Développement</option>
+                                <option value="Data Science">Data Science</option>
+                                <option value="Formation">Formation</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="template-description">Description</label>
+                            <textarea id="template-description" placeholder="Description du template"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="template-duration">Durée estimée (minutes)</label>
+                            <input type="number" id="template-duration" placeholder="60" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="template-thumbnail">URL de l'image</label>
+                            <input type="url" id="template-thumbnail" placeholder="/static/img/workshop-default.jpg">
+                        </div>
+                        <div class="form-group">
+                            <label for="template-config">Configuration JSON</label>
+                            <textarea id="template-config" placeholder='{"resources": {"cpu": 2, "memory": "2GB"}}' style="min-height: 120px; font-family: monospace;"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-buttons">
+                        <button class="button-1-full" onclick="CreateWorkshopTemplate()">Créer</button>
+                        <button class="button-1" onclick="CloseModal()">Annuler</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+        
+        function CreateWorkshopTemplate() {
+            var name = document.getElementById('template-name').value;
+            var category = document.getElementById('template-category').value;
+            var description = document.getElementById('template-description').value;
+            var duration = document.getElementById('template-duration').value;
+            var thumbnail = document.getElementById('template-thumbnail').value;
+            var config = document.getElementById('template-config').value;
+            
+            if (!name || !category) {
+                CreateNotification("Le nom et la catégorie sont requis.", "error");
+                return;
+            }
+            
+            var configObj = {};
+            if (config) {
+                try {
+                    configObj = JSON.parse(config);
+                } catch (e) {
+                    CreateNotification("Configuration JSON invalide.", "error");
+                    return;
+                }
+            }
+            
+            var url = "/api/workshops/templates";
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", url, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    var json = JSON.parse(xhr.responseText);
+                    if (json["success"] == true) {
+                        CloseModal();
+                        CreateNotification("Template créé avec succès!", "success");
+                        LoadWorkshopTemplatesAdmin();
+                    } else {
+                        if (json["error"] != null) {
+                            CreateNotification(json["error"], "error");
+                        } else {
+                            CreateNotification("Une erreur s'est produite lors de la création du template.", "error");
+                        }
+                    }
+                }
+            };
+            
+            var data = {
+                name: name,
+                category: category,
+                description: description,
+                estimated_duration: duration ? parseInt(duration) : null,
+                thumbnail: thumbnail || null,
+                config_schema: configObj
+            };
+            
+            xhr.send(JSON.stringify(data));
+        }
+        
+        function EditWorkshopTemplate(templateId) {
+            CreateNotification("Fonction d'édition en cours de développement.", "info");
+        }
+        
+        function DeleteWorkshopTemplate(templateId) {
+            if (!confirm("Êtes-vous sûr de vouloir supprimer ce template ?")) {
+                return;
+            }
+            
+            var url = `/api/workshops/templates/${templateId}`;
+            var xhr = new XMLHttpRequest();
+            xhr.open("DELETE", url, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    var json = JSON.parse(xhr.responseText);
+                    if (json["success"] == true) {
+                        CreateNotification("Template supprimé avec succès!", "success");
+                        LoadWorkshopTemplatesAdmin();
+                    } else {
+                        if (json["error"] != null) {
+                            CreateNotification(json["error"], "error");
+                        } else {
+                            CreateNotification("Une erreur s'est produite lors de la suppression du template.", "error");
+                        }
+                    }
+                }
+            };
+            xhr.send();
+        }
+        
+        function LoadWorkshopsAdmin() {
+            var content = document.querySelector('.admin-modal-main-content');
+            content.innerHTML = `
+                <div class="admin-modal-card">
+                    <div class="admin-modal-card-header">
+                        <h3>Workshops Actifs</h3>
+                    </div>
+                    <table class="admin-modal-table">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Utilisateur</th>
+                                <th>Template</th>
+                                <th>Statut</th>
+                                <th>Créé le</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workshops-table">
+                            <!-- Workshops will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            // Load workshops
+            var url = "/api/workshops";
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    var json = JSON.parse(xhr.responseText);
+                    if (json["success"] == true) {
+                        UpdateWorkshopsTable(json["workshops"]);
+                    }
+                }
+            };
+            xhr.send();
+        }
+        
+        function UpdateWorkshopsTable(workshops) {
+            var tbody = document.getElementById('workshops-table');
+            if (!tbody) return;
+            
+            tbody.innerHTML = "";
+            
+            if (workshops.length == 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">Aucun workshop trouvé.</td></tr>';
+                return;
+            }
+            
+            workshops.forEach(workshop => {
+                var statusClass = `status-${workshop.status}`;
+                var row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${workshop.name}</td>
+                    <td>${workshop.user?.username || 'Utilisateur inconnu'}</td>
+                    <td>${workshop.template?.name || 'Template inconnu'}</td>
+                    <td><span class="workshop-status ${statusClass}">${workshop.status}</span></td>
+                    <td>${new Date(workshop.created_at).toLocaleDateString('fr-FR')}</td>
+                    <td>
+                        <div class="admin-modal-table-actions">
+                            <i class="fas fa-eye" onclick="ViewWorkshopDetails('${workshop.id}')" title="Voir les détails"></i>
+                            <i class="fas fa-trash" onclick="DeleteWorkshop('${workshop.id}')" title="Supprimer"></i>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+        
+        function ViewWorkshopDetails(workshopId) {
+            CreateNotification("Fonction de visualisation en cours de développement.", "info");
+        }
+        
+        function DeleteWorkshop(workshopId) {
+            if (!confirm("Êtes-vous sûr de vouloir supprimer ce workshop ?")) {
+                return;
+            }
+            
+            var url = `/api/workshops/${workshopId}`;
+            var xhr = new XMLHttpRequest();
+            xhr.open("DELETE", url, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    var json = JSON.parse(xhr.responseText);
+                    if (json["success"] == true) {
+                        CreateNotification("Workshop supprimé avec succès!", "success");
+                        LoadWorkshopsAdmin();
+                    } else {
+                        if (json["error"] != null) {
+                            CreateNotification(json["error"], "error");
+                        } else {
+                            CreateNotification("Une erreur s'est produite lors de la suppression du workshop.", "error");
+                        }
+                    }
+                }
+            };
+            xhr.send();
+        }
+        
+        function CloseModal() {
+            var modal = document.querySelector('.modal.active');
+            if (modal) {
+                modal.remove();
+            }
         }
     </script>
     {% if current_user.has_permission("perm_admin_panel") %}

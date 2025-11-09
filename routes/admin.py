@@ -1,6 +1,7 @@
 import platform
 import sys
 import os
+import random, string
 from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 from sqlalchemy.sql import func
@@ -11,6 +12,9 @@ from models.registry import Registry
 from models.log import Log
 from utils.permissions import Permissions
 import utils.docker
+from utils.schemas import DropletCreateSchema, UserCreateSchema, GroupCreateSchema, RegistryCreateSchema
+from marshmallow import ValidationError
+from utils.logger import prune_logs
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -176,45 +180,41 @@ def api_admin_edit_droplet():
 		create_new = True
 		droplet = Droplet()
   
-	# Validate input
-	droplet.description = request.json.get('description', None)
+	# Validate input using schema
+	schema = DropletCreateSchema()
+	try:
+		data = schema.load(request.get_json())
+	except ValidationError as err:
+		return jsonify({"success": False, "error": err.messages}), 400
+
+	# Assign fields
+	droplet.description = data.get('description')
 	if droplet.description == "":
 		droplet.description = None
-	droplet.image_path = request.json.get('image_path', None)
+	droplet.image_path = data.get('image_path')
 	if droplet.image_path == "":
 		droplet.image_path = None
 
-	droplet.display_name = request.json.get('display_name')
-	if not droplet.display_name:
-		return jsonify({"success": False, "error": "Display Name is required"}), 400
+	droplet.display_name = data['display_name']
+	droplet.droplet_type = data['droplet_type']
 
-	droplet.droplet_type = request.json.get('droplet_type')
-	if not droplet.droplet_type:
-		return jsonify({"success": False, "error": "Droplet Type is required"}), 400
- 
+	# Container specific fields
 	if droplet.droplet_type == "container":
-		droplet.container_docker_registry = request.json.get('container_docker_registry')
+		droplet.container_docker_registry = data.get('container_docker_registry')
 		if not droplet.container_docker_registry:
 			return jsonify({"success": False, "error": "Docker Registry is required"}), 400
 
-		droplet.container_docker_image = request.json.get('container_docker_image')
+		droplet.container_docker_image = data.get('container_docker_image')
 		if not droplet.container_docker_image:
 			return jsonify({"success": False, "error": "Docker Image is required"}), 400
-	
-		# Ensure cores and memory are integers
-		if not request.json.get('container_cores'):
-			return jsonify({"success": False, "error": "Cores is required"}), 400
-		if not request.json.get('container_memory'):
-			return jsonify({"success": False, "error": "Memory is required"}), 400
 
-		try:
-			droplet.container_cores = float(request.json.get('container_cores'))
-		except:
-			return jsonify({"success": False, "error": "Cores must be a number"}), 400
-		try:
-			droplet.container_memory = float(request.json.get('container_memory'))
-		except:
-			return jsonify({"success": False, "error": "Memory must be a number"}), 400
+		droplet.container_cores = data.get('container_cores')
+		if droplet.container_cores is None:
+			return jsonify({"success": False, "error": "Cores is required"}), 400
+
+		droplet.container_memory = data.get('container_memory')
+		if droplet.container_memory is None:
+			return jsonify({"success": False, "error": "Memory is required"}), 400
 
 		# Check if cores or memory are negative
 		if droplet.container_cores < 0:
@@ -222,27 +222,29 @@ def api_admin_edit_droplet():
 		if droplet.container_memory < 0:
 			return jsonify({"success": False, "error": "Memory cannot be negative"}), 400
 
-		droplet.container_persistent_profile_path = request.json.get('container_persistent_profile_path')
+		droplet.container_persistent_profile_path = data.get('container_persistent_profile_path')
 		if not droplet.container_persistent_profile_path:
 			droplet.container_persistent_profile_path = None
-  
-	elif droplet.droplet_type == "vnc" or droplet.droplet_type == "rdp" or droplet.droplet_type == "ssh":
-		droplet.server_ip = request.json.get('server_ip')
+
+	# Non-container droplet types
+	elif droplet.droplet_type in ["vnc", "rdp", "ssh"]:
+		droplet.server_ip = data.get('server_ip')
 		if not droplet.server_ip:
 			return jsonify({"success": False, "error": "Server IP is required"}), 400
 
-		droplet.server_port = request.json.get('server_port')
+		droplet.server_port = data.get('server_port')
 		if not droplet.server_port:
 			return jsonify({"success": False, "error": "Server Port is required"}), 400
-  
-		droplet.server_username = request.json.get('server_username', None)
+
+		droplet.server_username = data.get('server_username')
 		if droplet.server_username == "":
 			droplet.server_username = None
-   
-		new_server_password = request.json.get('server_password', None)
+
+		new_server_password = data.get('server_password')
 		if new_server_password != "********************************":
 			droplet.server_password = new_server_password
-  
+
+		# Set default resources for VNC/RDP/SSH droplets
 		droplet.container_cores = 1
 		droplet.container_memory = 1024
   
@@ -327,19 +329,15 @@ def api_admin_edit_user():
 		create_new = True
 		user = User()
   
-	# Validate input
-	user.username = request.json.get('username')
-	if not user.username:
-		return jsonify({"success": False, "error": "Username is required"}), 400
-	if " " in user.username:
-		return jsonify({"success": False, "error": "Username cannot contain spaces"}), 400
+	# Validate input using schema
+	schema = UserCreateSchema()
+	try:
+		data = schema.load(request.get_json())
+	except ValidationError as err:
+		return jsonify({"error": "validation_error", "messages": err.messages}), 400
 
-	groups_string = ""
-	for group in request.json.get('groups'):
-		groups_string += f'{group},'
-	user.groups = groups_string[:-1]
-	if not user.groups or user.groups == "" or user.groups == "]":
-		return jsonify({"success": False, "error": "Groups are required"}), 400
+	user.username = data['username']
+	user.groups = ",".join(data['groups'])
 
 	# Passwords can only be set, not changed
 	if create_new:
@@ -419,7 +417,12 @@ def api_admin_groups():
 				"view_registry": group.perm_view_registry,
 				"edit_registry": group.perm_edit_registry,
 				"view_groups": group.perm_view_groups,
-				"edit_groups": group.perm_edit_groups
+				"edit_groups": group.perm_edit_groups,
+				"view_workshops": group.perm_view_workshops,
+				"edit_workshops": group.perm_edit_workshops,
+				"create_workshops": group.perm_create_workshops,
+				"manage_templates": group.perm_manage_templates,
+				"view_workshop_instances": group.perm_view_workshop_instances
 			}
 		})
  
@@ -440,54 +443,32 @@ def api_admin_edit_group():
 		group = Group()
 		group.protected = False
 	
-	# Validate input
-	group.display_name = request.json.get('display_name')
-	if not group.display_name:
-		return jsonify({"success": False, "error": "Display Name is required"}), 400
- 
-	group.perm_admin_panel = request.json.get('perm_admin_panel')
-	if not group.perm_admin_panel:
-		group.perm_admin_panel = False
- 
-	group.perm_view_instances = request.json.get('perm_view_instances')
-	if not group.perm_view_instances:
-		group.perm_view_instances = False
- 
-	group.perm_edit_instances = request.json.get('perm_edit_instances')
-	if not group.perm_edit_instances:
-		group.perm_edit_instances = False
- 
-	group.perm_view_users = request.json.get('perm_view_users')
-	if not group.perm_view_users:
-		group.perm_view_users = False
- 
-	group.perm_edit_users = request.json.get('perm_edit_users')
-	if not group.perm_edit_users:
-		group.perm_edit_users = False
- 
-	group.perm_view_droplets = request.json.get('perm_view_droplets')
-	if not group.perm_view_droplets:
-		group.perm_view_droplets = False
- 
-	group.perm_edit_droplets = request.json.get('perm_edit_droplets')
-	if not group.perm_edit_droplets:
-		group.perm_edit_droplets = False
-  
-	group.perm_view_registry = request.json.get('perm_view_registry')
-	if not group.perm_view_registry:
-		group.perm_view_registry = False
-  
-	group.perm_edit_registry = request.json.get('perm_edit_registry')
-	if not group.perm_edit_registry:
-		group.perm_edit_registry = False
- 
-	group.perm_view_groups = request.json.get('perm_view_groups')
-	if not group.perm_view_groups:
-		group.perm_view_groups = False
- 
-	group.perm_edit_groups = request.json.get('perm_edit_groups')
-	if not group.perm_edit_groups:
-		group.perm_edit_groups = False
+	# Validate input using schema
+	schema = GroupCreateSchema()
+	try:
+		data = schema.load(request.get_json())
+	except ValidationError as err:
+		return jsonify({"success": False, "error": err.messages}), 400
+
+	group.display_name = data['display_name']
+	group.perm_admin_panel = data.get('perm_admin_panel', False)
+	group.perm_view_instances = data.get('perm_view_instances', False)
+	group.perm_edit_instances = data.get('perm_edit_instances', False)
+	group.perm_view_users = data.get('perm_view_users', False)
+	group.perm_edit_users = data.get('perm_edit_users', False)
+	group.perm_view_droplets = data.get('perm_view_droplets', False)
+	group.perm_edit_droplets = data.get('perm_edit_droplets', False)
+	group.perm_view_registry = data.get('perm_view_registry', False)
+	group.perm_edit_registry = data.get('perm_edit_registry', False)
+	group.perm_view_groups = data.get('perm_view_groups', False)
+	group.perm_edit_groups = data.get('perm_edit_groups', False)
+	
+	# Workshop permissions
+	group.perm_view_workshops = data.get('perm_view_workshops', False)
+	group.perm_edit_workshops = data.get('perm_edit_workshops', False)
+	group.perm_create_workshops = data.get('perm_create_workshops', False)
+	group.perm_manage_templates = data.get('perm_manage_templates', False)
+	group.perm_view_workshop_instances = data.get('perm_view_workshop_instances', False)
  
 	if create_new:
 		db.session.add(group)
@@ -623,6 +604,21 @@ def api_admin_logs():
 			"pages": logs_pagination.pages
 		}
 	}) 
+
+@admin_bp.route('/logs/prune', methods=['POST'])
+@login_required
+def api_admin_prune_logs():
+    # Only admin panel users can prune logs
+    if not current_user.has_permission(Permissions.ADMIN_PANEL):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+
+    # Number of days can be provided in JSON payload, default to 90
+    days = request.json.get('days', 90)
+    try:
+        prune_logs(days)
+        return jsonify({"success": True, "message": f"Pruned logs older than {days} days"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @admin_bp.route('/images/status', methods=['GET'])
 @login_required
@@ -769,3 +765,23 @@ def api_admin_image_logs():
 			"success": False,
 			"error": f"Failed to fetch image logs: {str(e)}"
 		}), 500 
+@admin_bp.route('/rotate_secret_key', methods=['POST'])
+@login_required
+def api_admin_rotate_secret_key():
+	"""Rotate the Flask secret key and persist it to disk."""
+	if not Permissions.check_permission(current_user.id, Permissions.ADMIN_PANEL):
+		return jsonify({"success": False, "error": "Unauthorized"}), 403
+
+	# Generate a new 64‑character secret key
+	new_key = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(64))
+
+	# Persist the new key
+	secret_path = os.path.join("data", "secret_key")
+	with open(secret_path, "w") as f:
+		f.write(new_key)
+
+	# Update the running Flask app's secret key
+	from flask import current_app
+	current_app.secret_key = new_key
+
+	return jsonify({"success": True, "message": "Secret key rotated successfully"})

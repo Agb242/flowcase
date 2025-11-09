@@ -12,6 +12,13 @@ class Permissions:
 	EDIT_REGISTRY = "perm_edit_registry"
 	VIEW_GROUPS = "perm_view_groups"
 	EDIT_GROUPS = "perm_edit_groups"
+	
+	# Workshop permissions
+	VIEW_WORKSHOPS = "perm_view_workshops"
+	EDIT_WORKSHOPS = "perm_edit_workshops"
+	CREATE_WORKSHOPS = "perm_create_workshops"
+	MANAGE_TEMPLATES = "perm_manage_templates"
+	VIEW_WORKSHOP_INSTANCES = "perm_view_workshop_instances"
 
 	@staticmethod
 	def check_permission(userid, permission):

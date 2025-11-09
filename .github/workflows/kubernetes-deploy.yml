@@ -1,0 +1,257 @@
+name: Deploy to Kubernetes
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'kubernetes/**'
+      - '.github/workflows/kubernetes-deploy.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'kubernetes/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      app_name:
+        description: 'Application name (leave empty for OpenLovable)'
+        required: false
+        default: ''
+
+env:
+  NAMESPACE: openlovable
+  DOMAIN: apps.yourdomain.com
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Validate YAML files
+      run: |
+        for file in $(find kubernetes -name "*.yaml" -o -name "*.yml"); do
+          echo "Validating $file..."
+          python -c "import yaml; yaml.safe_load(open('$file'))"
+        done
+    
+    - name: Lint Kubernetes manifests
+      uses: stackrox/kube-linter-action@v1
+      with:
+        directory: kubernetes/
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Configure kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+    
+    # Pour AWS EKS
+    - name: Configure AWS credentials
+      if: env.CLOUD_PROVIDER == 'aws'
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+    
+    - name: Update kubeconfig for EKS
+      if: env.CLOUD_PROVIDER == 'aws'
+      run: |
+        aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
+    
+    # Pour Azure AKS
+    - name: Azure Login
+      if: env.CLOUD_PROVIDER == 'azure'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Set AKS context
+      if: env.CLOUD_PROVIDER == 'azure'
+      uses: azure/aks-set-context@v3
+      with:
+        resource-group: ${{ secrets.RESOURCE_GROUP }}
+        cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+    
+    # Pour Google GKE
+    - name: Authenticate to Google Cloud
+      if: env.CLOUD_PROVIDER == 'gcp'
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+    
+    - name: Get GKE credentials
+      if: env.CLOUD_PROVIDER == 'gcp'
+      uses: google-github-actions/get-gke-credentials@v1
+      with:
+        cluster_name: ${{ secrets.GKE_CLUSTER_NAME }}
+        location: ${{ secrets.GKE_ZONE }}
+    
+    # Pour un cluster générique avec kubeconfig
+    - name: Setup kubeconfig
+      if: env.CLOUD_PROVIDER == 'generic'
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+    
+    - name: Create namespace
+      run: |
+        kubectl apply -f kubernetes/namespace.yaml
+    
+    - name: Create secrets
+      run: |
+        # Créer les secrets depuis les variables GitHub
+        kubectl create secret generic openlovable-secrets \
+          --from-literal=database-url="${{ secrets.DATABASE_URL }}" \
+          --from-literal=jwt-secret="${{ secrets.JWT_SECRET }}" \
+          --from-literal=api-key="${{ secrets.API_KEY }}" \
+          -n ${{ env.NAMESPACE }} \
+          --dry-run=client -o yaml | kubectl apply -f -
+        
+        # Cloudflare API token pour External DNS
+        kubectl create secret generic cloudflare-api-credentials \
+          --from-literal=apiToken="${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+          -n ${{ env.NAMESPACE }} \
+          --dry-run=client -o yaml | kubectl apply -f -
+    
+    - name: Deploy cert-manager
+      run: |
+        # Vérifier si cert-manager est installé
+        if ! kubectl get namespace cert-manager &>/dev/null; then
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.yaml
+          sleep 30
+        fi
+        
+        # Appliquer les configurations
+        kubectl apply -f kubernetes/cert-manager/
+    
+    - name: Deploy NGINX Ingress
+      run: |
+        # Vérifier si NGINX est installé
+        if ! kubectl get namespace ingress-nginx &>/dev/null; then
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.4/deploy/static/provider/cloud/deploy.yaml
+          sleep 30
+        fi
+        
+        kubectl apply -f kubernetes/ingress-nginx/
+    
+    - name: Deploy External DNS
+      run: |
+        kubectl apply -f kubernetes/external-dns/
+    
+    - name: Deploy Application
+      run: |
+        APP_NAME="${{ github.event.inputs.app_name }}"
+        
+        if [ -z "$APP_NAME" ]; then
+          # Déployer OpenLovable
+          kubectl apply -f kubernetes/openlovable/deployment.yaml
+          kubectl apply -f kubernetes/openlovable/ingress.yaml
+        else
+          # Déployer une application spécifique
+          ./kubernetes/deploy-app.sh "$APP_NAME" "${{ secrets.DOCKER_IMAGE }}"
+        fi
+    
+    - name: Wait for deployment
+      run: |
+        APP_NAME="${{ github.event.inputs.app_name }}"
+        DEPLOYMENT_NAME="${APP_NAME:-openlovable}"
+        
+        kubectl rollout status deployment/$DEPLOYMENT_NAME -n ${{ env.NAMESPACE }} --timeout=300s
+    
+    - name: Run tests
+      run: |
+        cd kubernetes
+        chmod +x validate.sh
+        ./validate.sh
+    
+    - name: Get deployment info
+      if: always()
+      run: |
+        echo "=== Pods ==="
+        kubectl get pods -n ${{ env.NAMESPACE }}
+        
+        echo "=== Services ==="
+        kubectl get services -n ${{ env.NAMESPACE }}
+        
+        echo "=== Ingress ==="
+        kubectl get ingress -n ${{ env.NAMESPACE }}
+        
+        echo "=== External IP ==="
+        kubectl get service ingress-nginx-controller -n ingress-nginx
+
+  rollback:
+    runs-on: ubuntu-latest
+    if: failure() && github.event_name != 'pull_request'
+    needs: deploy
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Configure kubectl
+      run: |
+        # Même configuration que l'étape deploy
+        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+    
+    - name: Rollback deployment
+      run: |
+        APP_NAME="${{ github.event.inputs.app_name }}"
+        DEPLOYMENT_NAME="${APP_NAME:-openlovable}"
+        
+        echo "Rolling back $DEPLOYMENT_NAME..."
+        kubectl rollout undo deployment/$DEPLOYMENT_NAME -n ${{ env.NAMESPACE }}
+        kubectl rollout status deployment/$DEPLOYMENT_NAME -n ${{ env.NAMESPACE }}
+
+  notify:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [validate, deploy]
+    
+    steps:
+    - name: Send Slack notification
+      if: env.SLACK_WEBHOOK_URL != ''
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: |
+          Deployment Status: ${{ job.status }}
+          Repository: ${{ github.repository }}
+          Branch: ${{ github.ref }}
+          Commit: ${{ github.sha }}
+          Author: ${{ github.actor }}
+        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Create issue on failure
+      if: failure()
+      uses: actions/create-issue@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        title: 'Deployment Failed: ${{ github.run_id }}'
+        body: |
+          Deployment failed for commit ${{ github.sha }}
+          
+          **Details:**
+          - Repository: ${{ github.repository }}
+          - Branch: ${{ github.ref }}
+          - Author: ${{ github.actor }}
+          - Run ID: ${{ github.run_id }}
+          
+          Please check the [workflow logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for more details.
+        labels: bug, deployment

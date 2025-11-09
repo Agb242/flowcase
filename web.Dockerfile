@@ -23,3 +23,9 @@ RUN apt-get update && \
 
 # Install Python dependencies
 RUN pip install --trusted-host pypi.python.org -r requirements.txt
+
+# Create data and nginx directories
+RUN mkdir -p /flowcase/data /flowcase/nginx
+
+# Set the default command to run the application
+CMD ["python", "run.py"]

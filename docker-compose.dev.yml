@@ -14,11 +14,26 @@ services:
     environment:
       - FLASK_APP=run.py
       - FLASK_DEBUG=1
+      - PYTHONUNBUFFERED=1  # Pour les logs en temps réel
+      - PYTHONDONTWRITEBYTECODE=1  # Évite les fichiers .pyc
     ports:
-      - "5000"
+      - "5000:5000"  # Expose le port 5000 pour un accès direct
     networks:
       - default_network
-    command: python run.py --debug
+    command: python start_dev.py
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    stdin_open: true  # Permet d'attacher un terminal
+    tty: true        # Alloue un pseudo-TTY
 
   nginx:
     image: nginx:1.28-alpine
@@ -26,19 +41,30 @@ services:
     restart: unless-stopped
     volumes:
       - flowcase-nginx-data:/etc/nginx/conf.d
+      - ./nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       - "80:80"
     depends_on:
-      - web
+      web:
+        condition: service_healthy
     networks:
       - default_network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   default_network:
     driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
 
 volumes:
   flowcase-data:
-    external: false
+    driver: local
   flowcase-nginx-data:
-    external: false
+    driver: local

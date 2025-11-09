@@ -16,7 +16,61 @@ def load_user(user_id):
 def index():
 	if current_user.is_authenticated:
 		return redirect(url_for('auth.dashboard'))
-	return render_template('login.html', error=session.pop('error', None))
+	return render_template('login.html', error=session.pop('error', None), success=session.pop('success', None))
+
+@auth_bp.route('/register', methods=['GET'])
+def register_page():
+	"""Display registration form"""
+	if current_user.is_authenticated:
+		return redirect(url_for('auth.dashboard'))
+	return render_template('register.html', error=session.pop('error', None))
+
+@auth_bp.route('/register', methods=['POST'])
+def register():
+	"""Register a new user"""
+	from models.user import Group
+	
+	username = request.form.get('username')
+	email = request.form.get('email')
+	password = request.form.get('password')
+	password_confirm = request.form.get('password_confirm')
+	
+	# Validation
+	if not username or not password or not email:
+		session['error'] = "All fields are required"
+		return redirect(url_for('auth.register_page'))
+	
+	if password != password_confirm:
+		session['error'] = "Passwords do not match"
+		return redirect(url_for('auth.register_page'))
+	
+	if len(password) < 8:
+		session['error'] = "Password must be at least 8 characters"
+		return redirect(url_for('auth.register_page'))
+	
+	# Check if user exists
+	if User.query.filter_by(username=username).first():
+		session['error'] = "Username already exists"
+		return redirect(url_for('auth.register_page'))
+	
+	if User.query.filter_by(email=email).first():
+		session['error'] = "Email already registered"
+		return redirect(url_for('auth.register_page'))
+	
+	# Create user with default User group
+	user_group = Group.query.filter_by(display_name='User').first()
+	if not user_group:
+		session['error'] = "System error: default group not found"
+		return redirect(url_for('auth.register_page'))
+	
+	group_ids = user_group.id
+	user = create_user(username, password, group_ids)
+	user.email = email
+	db.session.commit()
+	
+	# Success message
+	session['success'] = "Account created successfully! Please sign in."
+	return redirect(url_for('auth.index'))
 
 @auth_bp.route('/dashboard')
 @login_required
